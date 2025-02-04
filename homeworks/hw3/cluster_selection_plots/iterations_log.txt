@@ -1,0 +1,102 @@
+Running iterations
+------------------
+Enter the parralax limits for the cluster
+Enter the minimum parralax value: 4
+Enter the maximum parralax value: 8
+Parralax limits:  4.0 8.0
+Number of stars with good parralax:  8277  out of  438709
+Do you want to re-enter the parralax limits? (y/n): n
+Enter the proper motion limits for the cluster
+Enter the bottom left x coordinate: -60
+Enter the bottom left y coordinate: -60
+Enter the width of the rectangle: 100
+Enter the height of the rectangle: 100
+Rectangle specification:  {'bottom_left': (-60.0, -60.0), 'width': 100.0, 'height': 100.0}
+Number of stars with good proper motion:  7313  out of  8277
+Do you want to re-enter the proper motion limits? (y/n): n
+Number of stars with good parralax:  7313  out of  7313
+Do you want to continue? (y/n): y
+Continue iterating:  True
+Running iteration
+Enter the parralax limits for the cluster
+Enter the minimum parralax value: 4.5
+Enter the maximum parralax value: 7
+Parralax limits:  4.5 7.0
+Number of stars with good parralax:  4890  out of  7313
+Do you want to re-enter the parralax limits? (y/n): n
+Enter the proper motion limits for the cluster
+Enter the bottom left x coordinate: -50
+Enter the bottom left y coordinate: -50
+Enter the width of the rectangle: 80
+Enter the height of the rectangle: 80
+Rectangle specification:  {'bottom_left': (-50.0, -50.0), 'width': 80.0, 'height': 80.0}
+Number of stars with good proper motion:  4532  out of  4890
+Do you want to re-enter the proper motion limits? (y/n): 
+Number of stars with good parralax:  4532  out of  4532
+Do you want to continue? (y/n): y
+Continue iterating:  True
+Running iteration
+Enter the parralax limits for the cluster
+Enter the minimum parralax value: 4.7
+Enter the maximum parralax value: 6.5
+Parralax limits:  4.7 6.5
+Number of stars with good parralax:  3698  out of  4532
+Do you want to re-enter the parralax limits? (y/n): n
+Enter the proper motion limits for the cluster
+Enter the bottom left x coordinate: -45
+Enter the bottom left y coordinate: -45
+Enter the width of the rectangle: 60
+Enter the height of the rectangle: 60
+Rectangle specification:  {'bottom_left': (-45.0, -45.0), 'width': 60.0, 'height': 60.0}
+Number of stars with good proper motion:  3331  out of  3698
+Do you want to re-enter the proper motion limits? (y/n): 
+Number of stars with good parralax:  3331  out of  3331
+Do you want to continue? (y/n): y
+Continue iterating:  True
+Running iteration
+Enter the parralax limits for the cluster
+Enter the minimum parralax value: 5
+Enter the maximum parralax value: 6
+Parralax limits:  5.0 6.0
+Number of stars with good parralax:  2337  out of  3331
+Do you want to re-enter the parralax limits? (y/n): n
+Enter the proper motion limits for the cluster
+Enter the bottom left x coordinate: -45
+Enter the bottom left y coordinate: -35
+Enter the width of the rectangle: 30
+Enter the height of the rectangle: 40
+Rectangle specification:  {'bottom_left': (-45.0, -35.0), 'width': 30.0, 'height': 40.0}
+Number of stars with good proper motion:  1578  out of  2337
+Do you want to re-enter the proper motion limits? (y/n): 
+Number of stars with good parralax:  1578  out of  1578
+Do you want to continue? (y/n): y
+Continue iterating:  True
+Running iteration
+Enter the parralax limits for the cluster
+Enter the minimum parralax value: 5.1
+Enter the maximum parralax value: 5.7
+Parralax limits:  5.1 5.7
+Number of stars with good parralax:  1276  out of  1578
+Do you want to re-enter the parralax limits? (y/n): n
+Enter the proper motion limits for the cluster
+Enter the bottom left x coordinate: -45
+Enter the bottom left y coordinate: -30
+Enter the width of the rectangle: 25
+Enter the height of the rectangle: 30
+Rectangle specification:  {'bottom_left': (-45.0, -30.0), 'width': 25.0, 'height': 30.0}
+Number of stars with good proper motion:  1187  out of  1276
+Do you want to re-enter the proper motion limits? (y/n): y
+Enter the proper motion limits for the cluster
+Enter the bottom left x coordinate: -45
+Enter the bottom left y coordinate: -25
+Enter the width of the rectangle: 20
+Enter the height of the rectangle: 25
+Rectangle specification:  {'bottom_left': (-45.0, -25.0), 'width': 20.0, 'height': 25.0}
+Number of stars with good proper motion:  1125  out of  1276
+Do you want to re-enter the proper motion limits? (y/n): n
+Number of stars with good parralax:  1125  out of  1125
+Do you want to continue? (y/n): n
+Continue iterating:  False
+End of iterations
+Data saved to cluster_data_final.csv
+
