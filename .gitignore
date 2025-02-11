@@ -1,3 +1,5 @@
 *.zip
-*data.csv
-homeworks/*/cluster_data_final.csv
+*.csv
+*.ipynb_checkpoints
+*/__pycache__
+*.pyc
