@@ -4,6 +4,7 @@ import astropy.units as u
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
+import numpy as np
 import re
 from requests.exceptions import Timeout
 import matplotlib.pyplot as plt
@@ -117,17 +118,16 @@ def make_distance_table(df,load=False):
     return df
 
 
-def query_gaia_high_pm_stars(ra, dec, radius,distance):
+def query_gaia_high_pm_stars(ra, dec, radius,distance,radius_frac=0.25):
     """
     Query Gaia DR3 for stars within a specified radius of given coordinates,
     filtering for stars with proper motion greater than pm_thresh.
 
     Parameters:
-    - ra (float): Right Ascension (degrees)
-    - dec (float): Declination (degrees)
-    - radius (float): Search radius (arcminutes)
-    - pm_thresh (float): Radial Velocity threshold (mas/yr)
-    - max_rows (int): Maximum number of rows to return (default=10000)
+    - ra, dec: The coordinates of the center of the search region in degrees.
+    - radius: The radius of the search region in arcminutes.
+    - pm_thresh: The minimum proper motion in mas/yr.
+    - radius_frac: The fraction of the radius to search within.
 
     Returns:
     - Pandas DataFrame containing the Gaia stars meeting the criteria.
@@ -136,20 +136,22 @@ def query_gaia_high_pm_stars(ra, dec, radius,distance):
     # Convert radius to degrees
     radius_deg = radius/60
 
+
     # Conver distance to parsecs
     frac = 0.3
+    
     distance_pc = [(1000*distance*(1+frac)), (1000*distance*(1-frac))]
 
-    print(f"Searching for stars within {radius} arcminutes of ({ra}, {dec})... between {distance_pc[0]} and {distance_pc[1]} parsecs")
+    print(f"Searching for stars within {radius_frac*radius} arcminutes of ({ra}, {dec})... between {distance_pc[0]} and {distance_pc[1]} parsecs")
 
 
     # Construct ADQL query to get the stars with proper motion > pm_thresh
     query = f"""
     SELECT source_id, ra, dec, parallax,parallax_error, pmra, pmdec, 
-           pm, phot_g_mean_mag, radial_velocity
+           pm, phot_g_mean_mag,bp_rp, radial_velocity
     FROM gaiadr3.gaia_source
     WHERE 1=CONTAINS(POINT('ICRS', ra, dec), 
-                     CIRCLE('ICRS', {ra}, {dec}, {radius_deg}))
+                     CIRCLE('ICRS', {ra}, {dec}, {radius_frac*radius_deg}))
                     AND parallax_over_error > 20
                     AND phot_bp_mean_flux_over_error >=5
                     AND phot_rp_mean_flux_over_error >=5
@@ -167,16 +169,22 @@ def query_gaia_high_pm_stars(ra, dec, radius,distance):
     return df
 
 
-def make_catalogue(df,load=False,max_retries=2):
+def make_catalogue(df,load=False):
     if load:
-        df_new = pd.read_csv("gaia_snrs_catalogue.csv")
+        if 'dist_pc' in df.columns:
+            df_new = pd.read_csv("gaia_snrs_catalogue.csv")
+        else:
+            df_new = end_of_querry_processing(pd.read_csv("gaia_snrs_catalogue.csv"))
         q_out = {}
         for grp in df_new["Object"].unique():
             df_t = df_new[df_new["Object"]==grp]
-            df_t = end_of_querry_processing(df_t)
+            print(f"Initiating end of Query Processing for {grp}...")
+            df_t = end_of_querry_processing(df_t,add_score=True)
+            print(f"End of Query Processing Successfull for {grp}!!")
             q_out[grp] = df_t
     else:
         q_out = {}
+        dfs = []
 
         for i in range(0, len(df)):
             print(f"Querying object {df['Object'].values[i]}")
@@ -186,34 +194,49 @@ def make_catalogue(df,load=False,max_retries=2):
                                                 radius=df['Ang_size'].values[i], 
                                                 distance=df["median_dist"].values[i])
                 
+                
                 #Append if q is not empty
                 if len(q) > 0:
                     Object_name = df["Object"].values[i]
                     q["Object"] = Object_name
+                    q["Ang_size"] = df['Ang_size'].values[i]
+                    
                     q["median_dist"] = df["median_dist"].values[i]
                     q["median_dist_error"] = df["median_dist_error"].values[i]
                     
+                    q["snr_ra"] = df['RA'].values[i]
+                    q["snr_dec"] = df['Dec'].values[i]
+
+                   
+
+                    print("Initiating end of Query Processing...")
+
+                    q = end_of_querry_processing(q,add_score=True)
+
+                    print("End of Query Processing Successfull!!")
+                    
                     q_out[Object_name] = q
+                    dfs.append(q)
 
                     if i == 0:
                         df_new = q
                     else: 
                         # Concatenate the new query results with the existing DataFrame
-                        df_new = pd.concat([df_new, q], ignore_index=True)                          
+                        df_new = pd.concat(dfs, ignore_index=True)                          
 
                     df_new.to_csv("gaia_snrs_catalogue.csv", index=False)
                 else:
                     print("query return empty df")
             except Exception as e:
-                    print(f"Failed to query object {df['Object'].values[i]} at index {i}")
+                    print(f"Failed to get table for object {df['Object'].values[i]} at index {i}")
                     print(f"Error: {e}")  # Print the actual error message
                     continue
             
-    df_new = end_of_querry_processing(df_new)
+    
 
     return df_new,q_out 
 
-def end_of_querry_processing(df_t):
+def end_of_querry_processing(df_t,add_score=False):
     df_new = df_t.copy()
     df_new = df_new.reset_index(drop=True)
     # Convert parallax to pm from mas/yr to km/s
@@ -221,32 +244,93 @@ def end_of_querry_processing(df_t):
     df_new.loc[:,"pm_km_s"] = df_new["pm"] * 4.74 * (1/df_new["parallax"])
     df_new.loc[:,"total_vel"] = (df_new["pm_km_s"]**2 + df_new["radial_velocity"]**2)**0.5
 
+    snr_ra = df_t.snr_ra.values[0]
+    snr_dec = df_t.snr_dec.values[0]
+    snr_dist = 1000*df_t.median_dist.values[0]
+
+    df_new.loc[:,'snr_sep'] = precompute_separations(df_t,snr_ra=snr_ra,snr_dec=snr_dec)
+    
+    if add_score:
+        # Calculate score
+        df_new = compute_star_scores(df_new,snr_ra,snr_dec,snr_dist)
+
+
     return df_new
 
+def precompute_separations(data, snr_ra, snr_dec):
+    """
+    Precomputes the angular separations of all stars from the SNR center.
 
-def plot_pm_vs_radial_velocity(df_new,median_dist=False,make_title=False): 
+    Parameters:
+        data: Pandas DataFrame containing 'ra' and 'dec' columns.
+        snr_ra: Right Ascension of SNR (degrees).
+        snr_dec: Declination of SNR (degrees).
+
+    Returns:
+        A NumPy array with separations in arcseconds.
+    """
+    # Convert all star coordinates into SkyCoord object
+    star_coords = SkyCoord(ra=data["ra"].values * u.deg, dec=data["dec"].values * u.deg, frame="icrs")
+
+    # SNR coordinates
+    snr_coords = SkyCoord(ra=snr_ra * u.deg, dec=snr_dec * u.deg, frame="icrs")
+
+    # Compute separations in bulk (vectorized operation)
+    separations = snr_coords.separation(star_coords).arcsecond  # Convert to arcseconds
+
+    return separations
+
+def plot_pm_vs_radial_velocity(df_new, median_dist=False, 
+                               make_title=False, add_score=False,
+                               savefile=None):
     # Make a scatter plot of the radial velocity vs. the proper motion, color-coded by object names
-    plt.figure(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(10, 6))
 
-    sns.scatterplot(data=df_new, x='dist_pc', y='pm_km_s',hue='Object', palette='tab10', s=30,alpha=0.6)
+    if add_score:
+        scatter = ax.scatter(df_new["dist_pc"], df_new["pm_km_s"], alpha=0.5, c=df_new['score'], cmap='viridis')
+        cbar = fig.colorbar(scatter, ax=ax, orientation='horizontal', pad=0.05,use_gridspec=False,location='top')
+        cbar.ax.xaxis.set_ticks_position('top')
+        cbar.ax.xaxis.set_label_position('top')
+        cbar.ax.tick_params(labelsize=18)
+        cbar.set_label('Star score', fontsize=20)
+
+        # Add highest score star
+        max_idx = df_new["score"].idxmax()
+        ax.scatter(df_new["dist_pc"][max_idx], 
+               df_new["pm_km_s"][max_idx], s=100, c='red', marker='*', label='Top Candidate')
+
+    else:
+        scatter = sns.scatterplot(data=df_new, x='dist_pc', 
+                                  y='pm_km_s', 
+                                  hue='Object',
+                                 palette='tab10', 
+                                 s=30, alpha=0.6, ax=ax)
 
     # Axvline at median distance
     if median_dist:
         # Plot a vertical fill between the median distance and the uncertainty
-        dist = 1000*df_new["median_dist"].values[0]
-        dist_error = 1000*df_new["median_dist_error"].values[0]
-        plt.axvline(dist, color='r', linestyle='--', label=f"Median distance: {dist:.2f} pc")
-        plt.fill_between([dist - dist_error, dist + dist_error], 0, df_new['pm_km_s'].max() + 10, color='r', alpha=0.1)
+        dist = 1000 * df_new["median_dist"].values[0]
+        dist_error = 1000 * df_new["median_dist_error"].values[0]
+        ax.axvline(dist, color='r', linestyle='--', label=f"Median distance: {dist:.2f} pc")
+        ax.fill_between([dist - dist_error, dist + dist_error], 0, 
+                        df_new['pm_km_s'].max() + 10, color='Grey', alpha=0.1,
+                        label=f"Distance uncertainty: {dist_error:.2f} pc")
 
-    plt.ylabel("Proper motion (km/s)", fontsize=18)
-    plt.xlabel("Distance [pc]", fontsize=18)
-    plt.grid(linestyle='--', alpha=0.5)
+    
+    ax.set_ylabel("Proper motion (km/s)", fontsize=18)
+    ax.set_xlabel("Distance [pc]", fontsize=18)
+    ax.grid(linestyle='--', alpha=0.5)
     if make_title:
-        plt.title(df_new.Object[0], fontsize=20)
-    plt.xticks(fontsize=18)
-    plt.yticks(fontsize=18)
-    plt.show()
+        ax.set_title(df_new.Object[0], fontsize=20)
+    ax.tick_params(axis='both', which='both', labelsize=18)
 
+    # Add a legend
+    ax.legend(fontsize=16, loc='upper right', framealpha=0.5)
+
+    if savefile:
+        plt.savefig(savefile,dpi=800,bbox_inches='tight')
+
+    plt.show()
 
 def split_value_uncertainty(value):
     if isinstance(value, str):
@@ -273,37 +357,68 @@ def process_raw_distance_cat(df):
     return df
 
 
-def plot_radec(r, plot_pm_dir=None,make_title=False):
-    fig, ax1 = plt.subplots(figsize=(8, 8))
-    ax1.scatter(r["ra"], r["dec"], s=2, alpha=0.5, color='y') 
+def plot_radec(df, plot_pm_dir=None,
+               make_title=False,draw_star_ID=None,
+               add_score=False,
+               savefile=None):
+    fig, ax1 = plt.subplots(figsize=(10,10))
+
+    if add_score:
+        scatter = ax1.scatter(df["ra"], df["dec"], s=20, alpha=0.5, c=df['score'])
+
+        cbar = fig.colorbar(scatter,ax=ax1)
+        cbar.set_label('Star score', fontsize=14) 
+
+    else:
+        ax1.scatter(df["ra"], df["dec"], s=5, alpha=0.5, color='y') 
+
+    def make_quiver(df,mask,clr,annotate=False):
+        pm_ra_deg = df["pmra"][mask]
+        pm_dec_deg = df["pmdec"][mask]
+        ax1.quiver(
+            df["ra"][mask], df["dec"][mask], 
+            pm_ra_deg, pm_dec_deg, 
+            angles="xy", color=clr, alpha=0.7
+        )
+        if annotate:
+            # Add annotation for the draw_star_ID
+            ax1.annotate(
+                f"PM: {df['pm_km_s'][0]:.2f} km/s", 
+                (df["ra"][mask], df["dec"][mask]), 
+                textcoords="offset points", 
+                xytext=(5,5), 
+                ha='center'
+            )
+
+    if draw_star_ID:
+        # Make a star given the star ID
+        mask = df["source_id"] == draw_star_ID
+        make_quiver(df,mask,"cyan",annotate=True)
 
     if plot_pm_dir:
-        mask = r["pm_km_s"] > plot_pm_dir
-        pm_ra_deg = r["pmra"][mask]
-        pm_dec_deg = r["pmdec"][mask]
-        ax1.quiver(
-            r["ra"][mask], r["dec"][mask], 
-            pm_ra_deg, pm_dec_deg, 
-            angles="xy", color="red", alpha=0.7
-        )
+        mask = df["score"] > plot_pm_dir
+        make_quiver(df,mask,"blue",annotate=False)
 
     #Plot the one with the highest proper motion
-    max_idx = r["pm_km_s"].idxmax()
+    max_idx = df["score"].idxmax()
     ax1.quiver(
-        r["ra"][max_idx], r["dec"][max_idx], 
-        r["pmra"][max_idx], r["pmdec"][max_idx], 
-        angles="xy", color="blue", alpha=0.7
+        df["ra"][max_idx], df["dec"][max_idx], 
+        df["pmra"][max_idx], df["pmdec"][max_idx], 
+        angles="xy", color="crimson", alpha=0.7,
+        label=f"Top cand:{df['pm_km_s'][max_idx]:.2f} km/s"
     )
-    # Add annotation for the highest proper motion
-    ax1.annotate(
-        f"Highest pm:{r['pm_km_s'][max_idx]:.2f} km/s", 
-        (r["ra"][max_idx], r["dec"][max_idx]), 
-        textcoords="offset points", 
-        xytext=(5,5), 
-        ha='center'
-    )
+    # Add annotation for the highest score star
+    # ax1.annotate(
+    #     f"Top cand:{df['pm_km_s'][max_idx]:.2f} km/s", 
+    #     (df["ra"][max_idx], df["dec"][max_idx]), 
+    #     textcoords="offset points", 
+    #     xytext=(5,15), 
+    #     ha='center',fontsize=18,
+    #     c='crimson',
+        
+    # )
     if make_title:
-        ax1.set_title(r.Object[0], fontfamily="serif", fontsize=20)
+        ax1.set_title(df.Object[0], fontfamily="serif", fontsize=20)
 
     ax1.set_xlabel(r"Right Ascension (deg)", fontfamily="serif", fontsize=18)
     ax1.set_ylabel(r"Declination (deg)", fontfamily="serif", fontsize=18)
@@ -311,5 +426,136 @@ def plot_radec(r, plot_pm_dir=None,make_title=False):
     ax1.tick_params(axis='x', which='minor', length=4, width=2, direction='in') 
     ax1.xaxis.set_minor_locator(AutoMinorLocator())
     ax1.yaxis.set_minor_locator(AutoMinorLocator())
+    
+    # Add a legend
+    ax1.legend(loc='upper right',fontsize=18,framealpha=0.5)
+
+    if savefile:
+        plt.savefig(savefile,dpi=800,bbox_inches='tight')
 
     plt.show()
+
+
+def compute_sep_score(snr_coord_sep, snr_diameter_arcmin):
+    """
+    Computes a scaled separation score based on the size of the SNR.
+    - 3 points if within 10% of the SNR size.
+    - 2 points if within 20%.
+    - 1 point if within 25%.
+    - Smoothly decreases beyond 25%.
+    
+    Parameters:
+        row: DataFrame row containing star's RA & Dec.
+        snr_ra: Right Ascension of the SNR center (degrees).
+        snr_dec: Declination of the SNR center (degrees).
+        snr_diameter_arcmin: Angular diameter of the SNR (arcseconds).
+
+    Returns:
+        Separation Score (0 to 3)
+    """
+    separation = snr_coord_sep
+
+    # Define scaling thresholds based on SNR size
+    d1 = 0.1 * snr_diameter_arcmin  # 10% of SNR size (score 3)
+    d2 = 0.2 * snr_diameter_arcmin  # 20% of SNR size (score 2)
+    d3 = 0.25 * snr_diameter_arcmin  # 25% of SNR size (score 1)
+
+    # Compute scaled score with smooth transition
+    if separation < d1:
+        sep_score = 3  # Within 10% of SNR
+    elif separation < d2:
+        sep_score = 3 - (separation - d1) / (d2 - d1)  # Linearly interpolate from 3 → 2
+    elif separation < d3:
+        sep_score = 2 - (separation - d2) / (d3 - d2)  # Linearly interpolate from 2 → 1
+    else:
+        sep_score = max(0, 1 - (separation - d3) / (d3))  # Smoothly approaches 0
+
+    return sep_score
+
+def compute_fine_score(row, snr_ra, snr_dec, snr_distance):
+    # Compute PM direction angle (continuous scaling)
+    star_pm_vector = np.array([row["pmra"], row["pmdec"]])
+    snr_vector = np.array([row["ra"] - snr_ra, row["dec"] - snr_dec])
+    theta = np.degrees(np.arccos(np.dot(star_pm_vector, snr_vector) / 
+                                 (np.linalg.norm(star_pm_vector) * np.linalg.norm(snr_vector) + 1e-6)))  # Avoid division by zero
+
+    # Scale PM direction angle smoothly from 0 (worst) to 3 (best)
+    pm_angle_score = max(0, (90 - theta) / 30)  # Closer to 0° gives a higher score, maxes at 3
+
+    # Compute score for distance from SNR coords
+    sep_score = compute_sep_score(row["snr_sep"],snr_diameter_arcmin=row["Ang_size"])  
+
+    # Compute proper motion (PM) score
+    pm = row['pm_km_s']
+    pm_score = np.interp(pm, [0, 10, 50, 500, 1000], [0, 1, 2, 3, 2])  # Smooth transition
+
+    # Compute color score 
+    color_score = np.interp(row["bp_rp"], [-0.2, 0.5, 1.5, 2.5], [3, 2.5, 1.5, 1])  # Blue stars get the highest scores
+
+    # Compute magnitude score 
+    mag_score = np.interp(row["phot_g_mean_mag"], [10, 13, 15, 18], [1, 2, 2.5, 3])  # Fainter stars score higher
+
+    # Compute distance score 
+    star_distance = row["dist_pc"]
+    distance_error = abs(star_distance - snr_distance) / snr_distance
+    distance_score = np.interp(distance_error, [0, 0.2, 0.5, 1], [3, 2, 1, 0])  # Close distances get higher scores
+
+    # Compute final score
+    weigths = {
+        "pm_angle": 3,
+        "pm": 3,
+        "mag": 2,
+        "color": 4,
+        "distance": 5,
+        "separation":4,
+    }
+    final_score = (pm_angle_score * weigths["pm_angle"] +
+                   pm_score * weigths["pm"] +
+                   mag_score * weigths["mag"] +
+                   color_score * weigths["color"] +
+                   distance_score * weigths["distance"] +
+                   sep_score* weigths["separation"])
+    
+    final_score = final_score/(3*sum(weigths.values())) * 100  # Normalize to 0-100 
+
+    return final_score
+
+def compute_star_scores(df, snr_ra, snr_dec, snr_distance):
+    df["score"] = df.apply(compute_fine_score, args=(snr_ra, snr_dec, snr_distance), axis=1)
+
+    df = df.sort_values(by='score',ascending=False)
+
+    return df
+
+
+def plot_cmd(df_full,ssize=30,marker='.',save_file=None):
+    fig, ax = plt.subplots(figsize=(16./2, 9./2))
+
+    # Plot the white dwarfs
+    scatter = ax.scatter(df_full['bp_rp'],df_full['phot_g_mean_mag'],
+               s=ssize,label='Star candidates',c=df_full['score'],
+               alpha=0.7,edgecolor=None,marker=marker)
+    
+    # Add highes score star
+    max_idx = df_full["score"].idxmax()
+
+    ax.scatter(df_full['bp_rp'][max_idx],df_full['phot_g_mean_mag'][max_idx],
+                s=ssize*2,label='Top Candidate',c='red',
+                alpha=0.7,edgecolor='black',marker='*')
+
+    ax.set_xlabel('BP - RP [mag]',fontsize=12)
+    ax.set_ylabel('Absolute Magnitude G band [mag]',fontsize=12)
+    ax.set_title('SNR Binary Companion Color Magnitude Diagram',fontsize=14)
+    ax.invert_yaxis()
+    ax.grid(True,linestyle='--',alpha=0.6)
+
+    # Add a color bar
+    cbar = fig.colorbar(scatter,ax=ax)
+    cbar.set_label('Star Score', fontsize=12)
+    
+    ax.legend(fontsize=16,loc='upper right')
+
+    if save_file:
+        plt.savefig(save_file,dpi=800,bbox_inches='tight')
+
+
