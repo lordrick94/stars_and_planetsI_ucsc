@@ -297,7 +297,7 @@ def plot_pm_vs_radial_velocity(df_new, median_dist=False,
         # Add highest score star
         max_idx = df_new["score"].idxmax()
         ax.scatter(df_new["dist_pc"][max_idx], 
-               df_new["pm_km_s"][max_idx], s=100, c='red', marker='*', label='Top Candidate')
+               df_new["pm_km_s"][max_idx], s=300, c='red', marker='*', label='Top Candidate',alpha=0.7)
 
     else:
         scatter = sns.scatterplot(data=df_new, x='dist_pc', 
@@ -380,14 +380,16 @@ def plot_radec(df, plot_pm_dir=None,
             pm_ra_deg, pm_dec_deg, 
             angles="xy", color=clr, alpha=0.7
         )
+
         if annotate:
-            # Add annotation for the draw_star_ID
             ax1.annotate(
-                f"PM: {df['pm_km_s'][0]:.2f} km/s", 
-                (df["ra"][mask], df["dec"][mask]), 
+                f"PM: {df['pm_km_s'][mask]:.2f} km/s",  # Text
+                xy=(df["ra"][mask], df["dec"][mask]),  # Position of annotation
                 textcoords="offset points", 
-                xytext=(5,5), 
-                ha='center'
+                xytext=(5, 15),  # Offset for text
+                ha='center', 
+                fontsize=18,
+                color='crimson'  # Use 'color' instead of 'c'
             )
 
     if draw_star_ID:
@@ -405,18 +407,21 @@ def plot_radec(df, plot_pm_dir=None,
         df["ra"][max_idx], df["dec"][max_idx], 
         df["pmra"][max_idx], df["pmdec"][max_idx], 
         angles="xy", color="crimson", alpha=0.7,
-        label=f"Top cand:{df['pm_km_s'][max_idx]:.2f} km/s"
+        label= ""
     )
-    # Add annotation for the highest score star
-    # ax1.annotate(
-    #     f"Top cand:{df['pm_km_s'][max_idx]:.2f} km/s", 
-    #     (df["ra"][max_idx], df["dec"][max_idx]), 
-    #     textcoords="offset points", 
-    #     xytext=(5,15), 
-    #     ha='center',fontsize=18,
-    #     c='crimson',
-        
-    # )
+
+    ax1.scatter(df["ra"][max_idx], df["dec"][max_idx], s=150, c='red', marker='*', label='Top Candidate',alpha=0.7)
+
+
+    ax1.annotate(
+        f"PM: {df['pm_km_s'][max_idx]:.2f} km/s",  # Text
+        xy=(df["ra"][max_idx], df["dec"][max_idx]),  # Position of annotation
+        textcoords="offset points", 
+        xytext=(5, 15),  # Offset for text
+        ha='center', 
+        fontsize=18,
+        color='crimson'  # Use 'color' instead of 'c'
+    )
     if make_title:
         ax1.set_title(df.Object[0], fontfamily="serif", fontsize=20)
 
@@ -540,8 +545,8 @@ def plot_cmd(df_full,ssize=30,marker='.',save_file=None):
     max_idx = df_full["score"].idxmax()
 
     ax.scatter(df_full['bp_rp'][max_idx],df_full['phot_g_mean_mag'][max_idx],
-                s=ssize*2,label='Top Candidate',c='red',
-                alpha=0.7,edgecolor='black',marker='*')
+                s=ssize*10,label='Top Candidate',c='red',
+                alpha=0.7,edgecolor='black',marker='*',)
 
     ax.set_xlabel('BP - RP [mag]',fontsize=12)
     ax.set_ylabel('Absolute Magnitude G band [mag]',fontsize=12)
